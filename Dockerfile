@@ -11,7 +11,7 @@ COPY . .
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runtime
-ARG TYPST_VERSION=v0.12.0
+ARG TYPST_VERSION=v0.14.2
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
