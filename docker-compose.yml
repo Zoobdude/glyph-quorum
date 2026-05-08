@@ -1,0 +1,16 @@
+services:
+  glyph-quorum:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/zoobdude/glyph-quorum:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    volumes:
+      - glyph-quorum-data:/app/server/data
+    restart: unless-stopped
+
+volumes:
+  glyph-quorum-data:

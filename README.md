@@ -63,6 +63,26 @@ node dist/index.js
 PORT=8080 node dist/index.js
 ```
 
+## Docker
+
+Build the container locally:
+
+```bash
+docker build -t glyph-quorum .
+```
+
+Run it:
+
+```bash
+docker run --rm -p 3000:3000 -v glyph-quorum-data:/app/server/data glyph-quorum
+```
+
+Or run with Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
 ### Behind a reverse proxy or Cloudflare Tunnel
 
 No extra configuration needed. Point your tunnel or proxy at `localhost:3000` (or your custom port) and the client will automatically connect over `wss://` when served over HTTPS.
