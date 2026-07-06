@@ -38,7 +38,7 @@ const WS_URL = import.meta.env.VITE_WS_URL ??
     ? 'ws://localhost:3000'
     : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`)
 
-export function useCollab(roomId: string, userName: string, userColor: string, password = '') {
+export function useCollab(roomId: string, userName: string, userColor: string, password = '', token = '') {
   const [connected, setConnected] = useState(false)
   const [users, setUsers] = useState<UserPresence[]>([])
   const [comments, setComments] = useState<Comment[]>([])
@@ -58,7 +58,7 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
       url: `${WS_URL}/ws`,
       name: roomId,
       document: doc,
-      parameters: { user: userName, password },
+      parameters: { user: userName, password, token },
       onConnect: () => setConnected(true),
       onDisconnect: () => setConnected(false),
       onSynced: () => setConnected(true),
@@ -142,7 +142,7 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
       docRef.current = null
       providerRef.current = null
     }
-  }, [roomId, userName, userColor, password])
+  }, [roomId, userName, userColor, password, token])
 
   /** Call this from the Monaco onMount handler to bind the editor. */
   const bindEditor = useCallback((ed: MonacoEditor.IStandaloneCodeEditor) => {

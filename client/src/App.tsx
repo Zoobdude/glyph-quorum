@@ -349,7 +349,7 @@ const panelStyle: React.CSSProperties = {
 function EditorView({ roomId, userName, userColor, onLeave }: {
   roomId: string; userName: string; userColor: string; onLeave: () => void
 }) {
-  const { connected, users, comments, changes, bindEditor, addComment, resolveComment } = useCollab(roomId, userName, userColor, '')
+  const { connected, users, comments, changes, bindEditor, addComment, resolveComment } = useCollab(roomId, userName, userColor, '', localStorage.getItem('quorum-token') || '')
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const [content, setContent] = useState('')
   const [viewMode, setViewMode] = useState<'split' | 'editor' | 'preview'>('split')
@@ -375,7 +375,7 @@ function EditorView({ roomId, userName, userColor, onLeave }: {
     if (!window.confirm(`Permanently delete room "${roomId}" and all its content? This cannot be undone.`)) return
     await fetch(`/api/rooms/${roomId}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('quorum-token')}` },
       body: JSON.stringify({ password: '' }),
     })
     onLeave()
