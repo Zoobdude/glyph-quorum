@@ -44,9 +44,35 @@ export function AccountSettings({ token, username, color, onUpdate, onCancel }: 
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 380, padding: 30, background: 'rgba(255,255,255,0.80)', borderRadius: 'var(--radius)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 8px 32px rgba(0,40,120,0.12)' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Account Settings</h1>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Navigation Header */}
+      <div style={{
+        height: 'var(--toolbar-h)',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 24px',
+        flexShrink: 0,
+        background: 'rgba(255,255,255,0.85)',
+        backdropFilter: 'blur(24px) saturate(180%)',
+        borderBottom: '1px solid rgba(0,0,0,0.06)',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
+      }}>
+        <button
+          onClick={onCancel}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, color: 'var(--subtext)',
+          }}
+        >
+          <span style={{ fontSize: 16 }}>←</span> Back to Dashboard
+        </button>
+      </div>
+
+      {/* Settings Form */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ width: 380, padding: 30, background: 'rgba(255,255,255,0.80)', borderRadius: 'var(--radius)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 8px 32px rgba(0,40,120,0.12)' }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Account Settings</h1>
 
         <label style={labelStyle}>Username</label>
         <input value={newUsername} onChange={e => setNewUsername(e.target.value)} style={inputStyle} />
@@ -73,6 +99,7 @@ export function AccountSettings({ token, username, color, onUpdate, onCancel }: 
           <button onClick={submit} disabled={loading} style={{ flex: 1, padding: 10, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontWeight: 600 }}>Save Changes</button>
           <button onClick={onCancel} disabled={loading} style={{ flex: 1, padding: 10, background: 'rgba(0,0,0,0.05)', color: 'var(--text)', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
         </div>
+      </div>
       </div>
     </div>
   )
@@ -234,8 +261,7 @@ function JoinScreen({ onJoin, token, username, onSettings }: { onJoin: (room: st
           </div>
         </div>
 
-        {rooms.length > 0 && (
-          <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: 'var(--text)' }}>Recent Documents</h2>
           {rooms.length > 0 ? (
             <div style={{
@@ -289,10 +315,29 @@ function JoinScreen({ onJoin, token, username, onSettings }: { onJoin: (room: st
               ))}
             </div>
           ) : (
-            <p style={{ color: 'var(--subtext)', fontSize: 14 }}>No documents found.</p>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+              <p style={{ color: 'var(--subtext)', fontSize: 15 }}>No documents found.</p>
+              <button
+                onClick={createDocument}
+                disabled={creating}
+                style={{
+                  padding: '10px 20px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius-sm)',
+                  background: creating ? 'rgba(37,99,235,0.5)' : 'var(--accent)',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: creating ? 'default' : 'pointer',
+                  letterSpacing: '-0.01em',
+                  boxShadow: '0 4px 12px rgba(37,99,235,0.2)',
+                }}
+              >
+                {creating ? 'Creating…' : '+ Create your first document'}
+              </button>
+            </div>
           )}
         </div>
-        )}
       </div>
     </div>
   )
