@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import type { CitationStyle } from './useCollab'
 
 const DEBOUNCE_MS = 1500
 
-export function useCompiler(content: string, docId: string) {
+export function useCompiler(content: string, docId: string, citationStyle: CitationStyle = 'author-date') {
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isCompiling, setIsCompiling] = useState(false)
@@ -10,8 +11,10 @@ export function useCompiler(content: string, docId: string) {
   const abortRef  = useRef<AbortController | null>(null)
   const contentRef = useRef(content)
   const docIdRef   = useRef(docId)
+  const citationStyleRef = useRef(citationStyle)
   contentRef.current = content
   docIdRef.current   = docId
+  citationStyleRef.current = citationStyle
 
   const compile = useCallback(async () => {
     abortRef.current?.abort()
@@ -22,7 +25,7 @@ export function useCompiler(content: string, docId: string) {
       const res = await fetch('/api/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: contentRef.current, docId: docIdRef.current }),
+        body: JSON.stringify({ content: contentRef.current, docId: docIdRef.current, citationStyle: citationStyleRef.current }),
         signal: ctrl.signal,
       })
       if (ctrl.signal.aborted) return
@@ -48,7 +51,7 @@ export function useCompiler(content: string, docId: string) {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(compile, DEBOUNCE_MS)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [content, docId, compile])
+  }, [content, docId, citationStyle, compile])
 
   // Immediate recompile (e.g. after asset upload)
   const recompile = useCallback(() => {

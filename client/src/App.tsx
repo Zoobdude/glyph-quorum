@@ -249,12 +249,12 @@ const panelStyle: React.CSSProperties = {
 function EditorView({ roomId, userName, userColor, password, onLeave }: {
   roomId: string; userName: string; userColor: string; password: string; onLeave: () => void
 }) {
-  const { connected, users, comments, changes, dictionary, trackChanges, setTrackChanges, spellCheckEnabled, setSpellCheckEnabled, bindEditor, addComment, resolveComment, acceptChange, rejectChange, addToDictionary } = useCollab(roomId, userName, userColor, password)
+  const { connected, users, comments, changes, dictionary, trackChanges, setTrackChanges, spellCheckEnabled, setSpellCheckEnabled, bindEditor, addComment, resolveComment, acceptChange, rejectChange, addToDictionary, citationStyle, setCitationStyle } = useCollab(roomId, userName, userColor, password)
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const [content, setContent] = useState('')
   const [viewMode, setViewMode] = useState<'split' | 'editor' | 'preview'>('split')
   const [fontSize, setFontSize] = useState(14)
-  const { pdfBytes, error, isCompiling, recompile } = useCompiler(content, roomId)
+  const { pdfBytes, error, isCompiling, recompile } = useCompiler(content, roomId, citationStyle)
 
   const handleMount = useCallback((ed: MonacoEditor.IStandaloneCodeEditor) => {
     editorRef.current = ed
@@ -353,6 +353,8 @@ function EditorView({ roomId, userName, userColor, password, onLeave }: {
           onResolveComment={resolveComment}
           onAcceptChange={acceptChange}
           onRejectChange={rejectChange}
+          citationStyle={citationStyle}
+          onCitationStyleChange={setCitationStyle}
         />
       </div>
     </div>

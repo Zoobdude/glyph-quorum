@@ -63,6 +63,8 @@ const WS_URL = import.meta.env.VITE_WS_URL ??
     ? 'ws://localhost:3000'
     : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`)
 
+export type CitationStyle = 'numbered' | 'author-date'
+
 export function useCollab(roomId: string, userName: string, userColor: string, password = '') {
   const [connected, setConnected] = useState(false)
   const [users, setUsers] = useState<UserPresence[]>([])
@@ -71,6 +73,7 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
   const [dictionary, setDictionary] = useState<string[]>([])
   const [trackChanges, setTrackChanges] = useState(() => localStorage.getItem(TRACK_CHANGES_KEY) === '1')
   const [spellCheckEnabled, setSpellCheckEnabled] = useState(() => localStorage.getItem(SPELL_CHECK_KEY) !== '0')
+  const [citationStyle, setCitationStyleState] = useState<CitationStyle>('author-date')
 
   const docRef = useRef<Y.Doc | null>(null)
   const providerRef = useRef<HocuspocusProvider | null>(null)
@@ -80,6 +83,7 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
   const yDictionaryRef = useRef<Y.Array<string> | null>(null)
   const trackChangesRef = useRef(trackChanges)
   const suppressTrackingRef = useRef(false)
+  const ySettingsRef = useRef<Y.Map<unknown> | null>(null)
 
   useEffect(() => {
     trackChangesRef.current = trackChanges
@@ -152,6 +156,13 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
       setChanges(list)
     }
     yChanges.observe(syncChanges)
+
+    // Shared room settings (e.g. citation style) — synced and persisted with the doc
+    const ySettings = doc.getMap<unknown>('settings')
+    ySettingsRef.current = ySettings
+    const syncSettings = () => setCitationStyleState((ySettings.get('citationStyle') as CitationStyle) ?? 'author-date')
+    syncSettings()
+    ySettings.observe(syncSettings)
 
     const yText = doc.getText('content')
     let prevText = yText.toString()
@@ -304,6 +315,7 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
       yComments.unobserve(syncComments)
       yChanges.unobserve(syncChanges)
       yDictionary.unobserve(syncDictionary)
+      ySettings.unobserve(syncSettings)
       bindingRef.current?.destroy()
       bindingRef.current = null
       provider.destroy()
@@ -402,6 +414,10 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
     suppressTrackingRef.current = false
   }, [])
 
+  const setCitationStyle = useCallback((style: CitationStyle) => {
+    ySettingsRef.current?.set('citationStyle', style)
+  }, [])
+
   return {
     connected,
     users,
@@ -418,5 +434,7 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
     acceptChange,
     rejectChange,
     addToDictionary,
+    citationStyle,
+    setCitationStyle,
   }
 }

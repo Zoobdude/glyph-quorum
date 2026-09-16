@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import * as monaco from 'monaco-editor'
-import type { Comment, UserPresence, Change } from '../hooks/useCollab'
+import type { Comment, UserPresence, Change, CitationStyle } from '../hooks/useCollab'
 import { CommentThread } from './CommentThread'
 import { ChangesList } from './ChangesList'
 import { useAssets } from '../hooks/useAssets'
@@ -21,9 +21,11 @@ interface Props {
   onResolveComment: (id: string) => void
   onAcceptChange: (id: string) => void
   onRejectChange: (id: string) => void
+  citationStyle: CitationStyle
+  onCitationStyleChange: (style: CitationStyle) => void
 }
 
-export function Sidebar({ comments, changes, trackChanges, users, ownName, ownColor, docId, editorRef, onAddComment, onResolveComment, onAcceptChange, onRejectChange }: Props) {
+export function Sidebar({ comments, changes, trackChanges, users, ownName, ownColor, docId, editorRef, onAddComment, onResolveComment, onAcceptChange, onRejectChange, citationStyle, onCitationStyleChange }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const [tab, setTab] = useState<Tab>('comments')
   const [draft, setDraft] = useState('')
@@ -227,6 +229,49 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
 
         {tab === 'assets' && (
           <>
+            {/* Citation style */}
+            <div style={{
+              padding: '10px 10px 9px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid rgba(0,0,0,0.06)',
+              background: 'rgba(255,255,255,0.5)',
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--overlay)', marginBottom: 7 }}>
+                Citation style
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {([
+                  ['author-date', 'Author-Date'],
+                  ['numbered', 'Numbered'],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    onClick={() => onCitationStyleChange(mode)}
+                    style={{
+                      flex: 1,
+                      background: citationStyle === mode ? 'var(--accent-soft)' : 'rgba(255,255,255,0.6)',
+                      border: `1px solid ${citationStyle === mode ? 'rgba(37,99,235,0.25)' : 'rgba(0,0,0,0.08)'}`,
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '5px 0',
+                      fontSize: 11,
+                      fontWeight: citationStyle === mode ? 600 : 400,
+                      color: citationStyle === mode ? 'var(--accent)' : 'var(--subtext)',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      transition: 'all .1s',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: 10, color: 'var(--overlay)', lineHeight: 1.5, marginTop: 7, marginBottom: 0 }}>
+                <code style={{ fontFamily: 'monospace' }}>@key</code> renders as narrative (Masson et al. (2021) said…),{' '}
+                <code style={{ fontFamily: 'monospace' }}>[@key]</code> as parenthetical ((Masson et al., 2021)). Upload a{' '}
+                <code style={{ fontFamily: 'monospace' }}>.bib</code> file below to resolve keys.
+              </p>
+            </div>
+
             {/* Drop zone / upload button */}
             <div
               onClick={() => fileInputRef.current?.click()}
@@ -250,13 +295,13 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
                 transition: 'border-color .1s, background .1s',
               }}
             >
-              {uploading ? 'Uploading…' : 'Click or drop images here'}
+              {uploading ? 'Uploading…' : 'Click or drop images or a .bib file here'}
             </div>
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,.svg,.pdf"
+              accept="image/*,.svg,.pdf,.bib"
               style={{ display: 'none' }}
               onChange={e => { if (e.target.files) upload(e.target.files); e.target.value = '' }}
             />
@@ -268,7 +313,7 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
 
             {/* Usage hint */}
             <p style={{ fontSize: 11, color: 'var(--overlay)', lineHeight: 1.5 }}>
-              Reference in Typst:{' '}
+              Reference an image in Typst:{' '}
               <code style={{ fontFamily: 'monospace', fontSize: 10 }}>image("filename.png")</code>
             </p>
 
@@ -329,6 +374,7 @@ function fileEmoji(name: string) {
   if (['.png','.jpg','.jpeg','.gif','.webp'].includes(ext)) return '🖼'
   if (ext === '.svg') return '✏️'
   if (ext === '.pdf') return '📄'
+  if (ext === '.bib') return '📚'
   return '📎'
 }
 
