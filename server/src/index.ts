@@ -56,7 +56,7 @@ app.delete('/api/rooms/:docId', (req, res) => {
 
 // ── Assets ────────────────────────────────────────────────────────────────
 
-const ASSET_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.pdf', '.webp'])
+const ASSET_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.pdf', '.webp', '.bib'])
 const RESERVED   = new Set(['_compile.typ', '_compile.pdf'])
 
 app.get('/api/rooms/:docId/assets', (req, res) => {
@@ -93,11 +93,11 @@ app.delete('/api/rooms/:docId/assets/:filename', (req, res) => {
 // ── Compile ───────────────────────────────────────────────────────────────
 
 app.post('/api/compile', async (req, res) => {
-  const { content, docId } = req.body as { content?: string; docId?: string }
+  const { content, docId, citationStyle } = req.body as { content?: string; docId?: string; citationStyle?: 'numbered' | 'author-date' }
   if (typeof content !== 'string') {
     return res.status(400).json({ ok: false, error: 'content required' })
   }
-  const result = await compileTypst(content, docId ?? 'untitled')
+  const result = await compileTypst(content, docId ?? 'untitled', citationStyle ?? 'author-date')
   res.json(result)
 })
 
