@@ -7,3 +7,8 @@ client/dist
 server/dist
 npm-debug.log
 .DS_Store
+server/data
+Dockerfile.dev
+docker-compose*.yml
+*.png
+!client/public/*.png

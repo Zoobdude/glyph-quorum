@@ -1,45 +1,48 @@
 import { useState, useCallback } from 'react'
+import { api } from '../lib/api'
 
 export interface Asset {
   name: string
   size: number
+  modified: number
+}
+
+const ALLOWED = /\.(png|jpe?g|gif|webp|svg|pdf|bib)$/i
+const MAX_BYTES = 20 * 1024 * 1024
+
+/** Make a filename acceptable to the server: ASCII letters, digits, space, dot, dash, underscore, parentheses. */
+export function safeAssetName(name: string): string {
+  const clean = name.normalize('NFKD').replace(/[^A-Za-z0-9 ._()-]+/g, '_').replace(/^[^A-Za-z0-9]+/, '')
+  return clean.length > 100 ? clean.slice(0, 100 - 8) + clean.slice(-8) : clean
 }
 
 export function useAssets(docId: string) {
-  const [assets, setAssets]     = useState<Asset[]>([])
+  const [assets, setAssets]       = useState<Asset[]>([])
   const [uploading, setUploading] = useState(false)
   const [error, setError]         = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
-      const res  = await fetch(`/api/rooms/${docId}/assets`)
-      const data = await res.json()
+      const data = await api<{ files: Asset[] }>(`/docs/${docId}/assets`)
       setAssets(data.files ?? [])
     } catch (e) {
-      setError(`Failed to load assets: ${(e as Error).message}`)
+      setError(`Failed to load files: ${(e as Error).message}`)
     }
   }, [docId])
 
-  const upload = useCallback(async (files: FileList) => {
+  /** Uploads the files and resolves with the names they were stored under. */
+  const upload = useCallback(async (files: FileList | File[]): Promise<string[]> => {
     setError(null)
     setUploading(true)
+    const stored: string[] = []
     try {
       for (const file of Array.from(files)) {
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload  = e => resolve((e.target!.result as string).split(',')[1])
-          reader.onerror = () => reject(new Error(`Could not read ${file.name}`))
-          reader.readAsDataURL(file)
-        })
-        const res = await fetch(`/api/rooms/${docId}/assets`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: file.name, data: base64 }),
-        })
-        if (!res.ok) {
-          const msg = await res.text().catch(() => res.statusText)
-          throw new Error(`Upload failed for ${file.name}: ${msg}`)
-        }
+        const name = safeAssetName(file.name)
+        if (!ALLOWED.test(name)) throw new Error(`${file.name}: unsupported file type`)
+        if (file.size > MAX_BYTES) throw new Error(`${file.name} is larger than 20 MB`)
+        // Sent as raw bytes — no base64 inflation, no JSON parsing on the server.
+        await api(`/docs/${docId}/assets/${encodeURIComponent(name)}`, { method: 'PUT', raw: file })
+        stored.push(name)
       }
     } catch (e) {
       setError((e as Error).message)
@@ -47,11 +50,12 @@ export function useAssets(docId: string) {
       setUploading(false)
       await refresh()
     }
+    return stored
   }, [docId, refresh])
 
   const remove = useCallback(async (name: string) => {
     try {
-      await fetch(`/api/rooms/${docId}/assets/${encodeURIComponent(name)}`, { method: 'DELETE' })
+      await api(`/docs/${docId}/assets/${encodeURIComponent(name)}`, { method: 'DELETE' })
       await refresh()
     } catch (e) {
       setError(`Failed to delete: ${(e as Error).message}`)

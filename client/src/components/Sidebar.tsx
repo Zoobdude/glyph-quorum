@@ -3,7 +3,9 @@ import * as monaco from 'monaco-editor'
 import type { Comment, UserPresence, Change, CitationStyle } from '../hooks/useCollab'
 import { CommentThread } from './CommentThread'
 import { ChangesList } from './ChangesList'
-import { useAssets } from '../hooks/useAssets'
+import type { useAssets } from '../hooks/useAssets'
+import { assetUrl, formatSize } from '../lib/api'
+import { Icon } from './ui'
 import type { editor as MonacoEditor } from 'monaco-editor'
 
 type Tab = 'comments' | 'changes' | 'assets' | 'users'
@@ -23,16 +25,35 @@ interface Props {
   onRejectChange: (id: string) => void
   citationStyle: CitationStyle
   onCitationStyleChange: (style: CitationStyle) => void
+  canEdit: boolean
+  assetStore: ReturnType<typeof useAssets>
+  onAssetsChanged: () => void
+  useLibrary: boolean
+  onUseLibraryChange: (on: boolean) => void
+  onCite: () => void
 }
 
-export function Sidebar({ comments, changes, trackChanges, users, ownName, ownColor, docId, editorRef, onAddComment, onResolveComment, onAcceptChange, onRejectChange, citationStyle, onCitationStyleChange }: Props) {
+export function Sidebar({ comments, changes, trackChanges, users, ownName, ownColor, docId, editorRef, onAddComment, onResolveComment, onAcceptChange, onRejectChange, citationStyle, onCitationStyleChange, canEdit, assetStore, onAssetsChanged, useLibrary, onUseLibraryChange, onCite }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const [tab, setTab] = useState<Tab>('comments')
   const [draft, setDraft] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
-  const { assets, uploading, error: assetError, refresh, upload, remove } = useAssets(docId)
+  const { assets, uploading, error: assetError, refresh } = assetStore
+  const upload = async (files: FileList) => { await assetStore.upload(files); onAssetsChanged() }
+  const remove = async (name: string) => { await assetStore.remove(name); onAssetsChanged() }
+
+  /** Insert a reference to an uploaded file at the cursor. */
+  const insertAsset = (name: string) => {
+    const ed = editorRef.current
+    const sel = ed?.getSelection()
+    if (!ed || !sel || !canEdit) return
+    const text = /\.bib$/i.test(name) ? '' : `#image("${name}", width: 80%)`
+    if (!text) return
+    ed.executeEdits('insert-asset', [{ range: sel, text, forceMoveMarkers: true }])
+    ed.focus()
+  }
 
   useEffect(() => { if (tab === 'assets') refresh() }, [tab, refresh])
 
@@ -66,49 +87,37 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
   const tabs: { id: Tab; label: string }[] = [
     { id: 'comments', label: activeComments.length ? `Comments (${activeComments.length})` : 'Comments' },
     { id: 'changes',  label: pendingChanges.length ? `Changes (${pendingChanges.length})` : 'Changes' },
-    { id: 'assets',   label: 'Assets' },
-    { id: 'users',    label: `Users (${users.length + 1})` },
+    { id: 'assets',   label: 'Files' },
+    { id: 'users',    label: `People (${users.length + 1})` },
   ]
 
   if (collapsed) {
     return (
-      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 4px', background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)', borderRadius: 'var(--radius)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 8px 32px rgba(0,40,120,0.08), inset 0 1px 0 rgba(255,255,255,0.95)' }}>
+      <div className="panel" style={{ flex: 'none', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 4px' }}>
         <button onClick={() => setCollapsed(false)} title="Expand sidebar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--subtext)', fontSize: 18, lineHeight: 1, padding: 4 }}>‹</button>
         {activeComments.length > 0 && (
           <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-soft)', borderRadius: 10, padding: '1px 5px' }}>{activeComments.length}</span>
         )}
         {pendingChanges.length > 0 && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--green)', background: 'rgba(22,163,74,0.12)', borderRadius: 10, padding: '1px 5px' }}>{pendingChanges.length}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--green)', background: 'var(--green-soft)', borderRadius: 10, padding: '1px 5px' }}>{pendingChanges.length}</span>
         )}
       </div>
     )
   }
 
   return (
-    <div style={{
-      width: 'var(--sidebar-w)',
-      flexShrink: 0,
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'rgba(255,255,255,0.72)',
-      backdropFilter: 'blur(24px) saturate(180%)',
-      WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-      borderRadius: 'var(--radius)',
-      border: '1px solid rgba(255,255,255,0.85)',
-      boxShadow: '0 8px 32px rgba(0,40,120,0.08), 0 1px 4px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)',
-      overflow: 'hidden',
-    }}>
+    <div className="panel hide-narrow" style={{ flex: 'none', width: 'var(--sidebar-w)', flexDirection: 'column' }}>
       {/* Tab bar with collapse button */}
-      <div style={{ display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.06)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
         {tabs.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             style={{
-              padding: '10px 10px',
-              fontSize: 11,
+              padding: '11px 9px',
+              fontSize: 12,
               fontWeight: 600,
-              letterSpacing: '0.02em',
+              whiteSpace: 'nowrap',
               background: 'none',
               border: 'none',
               borderBottom: tab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
@@ -121,7 +130,7 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
             {t.label}
           </button>
         ))}
-        <div style={{ width: 1, height: 16, background: 'rgba(0,0,0,0.08)', flexShrink: 0, alignSelf: 'center' }} />
+        <div style={{ flex: 1 }} />
         <button
           onClick={() => setCollapsed(true)}
           title="Collapse sidebar"
@@ -135,7 +144,7 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
       <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {tab === 'comments' && (
           <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {canEdit && <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <textarea
                 ref={textareaRef}
                 value={draft}
@@ -148,8 +157,8 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
                   fontSize: 12,
                   padding: '7px 9px',
                   borderRadius: 'var(--radius-sm)',
-                  border: '1px solid rgba(0,0,0,0.08)',
-                  background: 'rgba(255,255,255,0.6)',
+                  border: '1px solid var(--line)',
+                  background: 'var(--surface)',
                   color: 'var(--text)',
                   fontFamily: 'inherit',
                   outline: 'none',
@@ -164,7 +173,7 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
                   padding: '5px 12px',
                   borderRadius: 'var(--radius-sm)',
                   cursor: draft.trim() ? 'pointer' : 'default',
-                  background: draft.trim() ? 'var(--accent)' : 'rgba(0,0,0,0.08)',
+                  background: draft.trim() ? 'var(--accent)' : 'var(--track)',
                   color: draft.trim() ? '#fff' : 'var(--overlay)',
                   border: 'none',
                   alignSelf: 'flex-end',
@@ -173,13 +182,13 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
               >
                 Comment <kbd style={{ fontSize: 9, opacity: 0.7, fontFamily: 'inherit' }}>⌘↵</kbd>
               </button>
-            </div>
+            </div>}
 
             {activeComments.map(c => (
               <CommentThread
                 key={c.id}
                 comment={c}
-                onResolve={onResolveComment}
+                onResolve={canEdit ? onResolveComment : () => {}}
                 onNavigate={() => {
                   const ed = editorRef.current
                   if (!ed) return
@@ -233,8 +242,8 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
             <div style={{
               padding: '10px 10px 9px',
               borderRadius: 'var(--radius-sm)',
-              border: '1px solid rgba(0,0,0,0.06)',
-              background: 'rgba(255,255,255,0.5)',
+              border: '1px solid var(--line)',
+              background: 'var(--surface)',
             }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--overlay)', marginBottom: 7 }}>
                 Citation style
@@ -249,8 +258,8 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
                     onClick={() => onCitationStyleChange(mode)}
                     style={{
                       flex: 1,
-                      background: citationStyle === mode ? 'var(--accent-soft)' : 'rgba(255,255,255,0.6)',
-                      border: `1px solid ${citationStyle === mode ? 'rgba(37,99,235,0.25)' : 'rgba(0,0,0,0.08)'}`,
+                      background: citationStyle === mode ? 'var(--accent-soft)' : 'var(--surface)',
+                      border: `1px solid ${citationStyle === mode ? 'var(--accent)' : 'var(--line)'}`,
                       borderRadius: 'var(--radius-sm)',
                       padding: '5px 0',
                       fontSize: 11,
@@ -265,15 +274,30 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
                   </button>
                 ))}
               </div>
-              <p style={{ fontSize: 10, color: 'var(--overlay)', lineHeight: 1.5, marginTop: 7, marginBottom: 0 }}>
-                <code style={{ fontFamily: 'monospace' }}>@key</code> renders as narrative (Masson et al. (2021) said…),{' '}
-                <code style={{ fontFamily: 'monospace' }}>[@key]</code> as parenthetical ((Masson et al., 2021)). Upload a{' '}
-                <code style={{ fontFamily: 'monospace' }}>.bib</code> file below to resolve keys.
+              <p style={{ fontSize: 11, color: 'var(--overlay)', lineHeight: 1.5, marginTop: 8, marginBottom: 0 }}>
+                <code>@key</code> gives “Masson et al. (2021)”, <code>[@key]</code> gives “(Masson et al., 2021)”.
               </p>
+
+              {/* Reference library: resolves keys without uploading a .bib file */}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)', fontSize: 12, cursor: canEdit ? 'pointer' : 'default' }}>
+                <input type="checkbox" checked={useLibrary} disabled={!canEdit} onChange={e => onUseLibraryChange(e.target.checked)} style={{ marginTop: 2, accentColor: 'var(--accent)' }} />
+                <span>
+                  <b style={{ fontWeight: 600 }}>Use reference library</b>
+                  <span style={{ display: 'block', color: 'var(--overlay)', fontSize: 11, lineHeight: 1.45 }}>
+                    Citations are looked up in the libraries of this document’s owner and editors. A .bib file uploaded here takes priority.
+                  </span>
+                </span>
+              </label>
+              {canEdit && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                  <button className="btn" style={{ flex: 1, height: 28, fontSize: 12 }} onClick={onCite}><Icon name="quote" size={14} />Insert citation</button>
+                  <a className="btn" style={{ height: 28, fontSize: 12 }} href="/references" target="_blank" rel="noopener">Library</a>
+                </div>
+              )}
             </div>
 
             {/* Drop zone / upload button */}
-            <div
+            {canEdit && <div
               onClick={() => fileInputRef.current?.click()}
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
@@ -288,15 +312,15 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
                 textAlign: 'center',
                 fontSize: 12,
                 borderRadius: 'var(--radius-sm)',
-                border: `1px dashed ${dragOver ? 'var(--accent)' : 'rgba(0,0,0,0.15)'}`,
-                background: dragOver ? 'var(--accent-soft)' : 'rgba(255,255,255,0.4)',
+                border: `1px dashed ${dragOver ? 'var(--accent)' : 'var(--line-strong)'}`,
+                background: dragOver ? 'var(--accent-soft)' : 'var(--surface)',
                 color: uploading ? 'var(--overlay)' : dragOver ? 'var(--accent)' : 'var(--subtext)',
                 cursor: uploading ? 'default' : 'pointer',
                 transition: 'border-color .1s, background .1s',
               }}
             >
               {uploading ? 'Uploading…' : 'Click or drop images or a .bib file here'}
-            </div>
+            </div>}
             <input
               ref={fileInputRef}
               type="file"
@@ -320,41 +344,30 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
             {/* Asset list */}
             {assets.length === 0 && !uploading && (
               <p style={{ textAlign: 'center', color: 'var(--overlay)', fontSize: 12, paddingTop: 4 }}>
-                No assets yet
+                No files yet
               </p>
             )}
-            {assets.map(a => (
-              <div key={a.name} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 10px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(0,0,0,0.06)',
-                background: 'rgba(255,255,255,0.6)',
-              }}>
-                <span style={{ fontSize: 16, lineHeight: 1 }}>{fileEmoji(a.name)}</span>
-                <span style={{
-                  flex: 1, fontSize: 12, color: 'var(--text)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  fontFamily: 'monospace',
-                }}>
-                  {a.name}
-                </span>
-                <span style={{ fontSize: 10, color: 'var(--overlay)', flexShrink: 0 }}>
-                  {formatSize(a.size)}
-                </span>
-                <button
-                  onClick={() => remove(a.name)}
-                  title="Delete asset"
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: 'var(--overlay)', fontSize: 14, lineHeight: 1, padding: 2,
-                    flexShrink: 0,
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+            <div className="asset-grid">
+              {assets.map(a => {
+                const isImage = /\.(png|jpe?g|gif|webp|svg)$/i.test(a.name)
+                return (
+                  <div key={a.name} className="asset">
+                    <button className="pic" disabled={!canEdit || !isImage} title={isImage && canEdit ? 'Insert into document at cursor' : a.name} onClick={() => insertAsset(a.name)}>
+                      {isImage
+                        ? <img src={assetUrl(docId, a.name, a.modified)} alt="" loading="lazy" decoding="async" />
+                        : <Icon name={/\.bib$/i.test(a.name) ? 'book' : 'file'} size={28} />}
+                    </button>
+                    <div className="meta">
+                      <div className="n truncate" title={a.name}>{a.name}</div>
+                      <div className="z">
+                        {formatSize(a.size)} · <a href={`${assetUrl(docId, a.name)}?download`} download={a.name}>Download</a>
+                      </div>
+                    </div>
+                    {canEdit && <button className="icon-btn x" onClick={() => remove(a.name)} aria-label={`Delete ${a.name}`} title="Delete file"><Icon name="x" size={14} /></button>}
+                  </div>
+                )
+              })}
+            </div>
           </>
         )}
 
@@ -369,24 +382,9 @@ export function Sidebar({ comments, changes, trackChanges, users, ownName, ownCo
   )
 }
 
-function fileEmoji(name: string) {
-  const ext = name.slice(name.lastIndexOf('.')).toLowerCase()
-  if (['.png','.jpg','.jpeg','.gif','.webp'].includes(ext)) return '🖼'
-  if (ext === '.svg') return '✏️'
-  if (ext === '.pdf') return '📄'
-  if (ext === '.bib') return '📚'
-  return '📎'
-}
-
-function formatSize(bytes: number) {
-  if (bytes < 1024) return `${bytes}B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
-}
-
 function UserRow({ name, color, label }: { name: string; color: string; label?: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 4px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--line)' }}>
       <div style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
       <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>{name}</span>
       {label && <span style={{ fontSize: 11, color: 'var(--overlay)', marginLeft: 2 }}>{label}</span>}

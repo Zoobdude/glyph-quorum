@@ -55,17 +55,25 @@ function resolveOffset(doc: Y.Doc, json: ReturnType<typeof Y.relativePositionToJ
   return abs?.index
 }
 
-// In dev, use the env var (proxied to localhost:3000).
-// In production, connect back to whatever host served the page so it works
-// behind any reverse proxy or Cloudflare Tunnel with zero config.
+// Always connect back to whatever host served the page (the Vite dev server proxies
+// /ws to the API), so the session cookie is sent and it works behind any reverse proxy.
 const WS_URL = import.meta.env.VITE_WS_URL ??
-  (import.meta.env.DEV
-    ? 'ws://localhost:3000'
-    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`)
+  `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
 
 export type CitationStyle = 'numbered' | 'author-date'
 
-export function useCollab(roomId: string, userName: string, userColor: string, password = '') {
+interface Options {
+  /** Called when the server closes the connection (e.g. access was changed) so the caller can re-check permissions. */
+  onDisconnected?: () => void
+}
+
+export function useCollab(roomId: string, userName: string, userColor: string, { onDisconnected }: Options = {}) {
+  const [synced, setSynced] = useState(false)
+  const [unsaved, setUnsaved] = useState(false)
+  const [title, setTitle] = useState<string | null>(null)
+  const [useLibrary, setUseLibraryState] = useState(true)
+  const onDisconnectedRef = useRef(onDisconnected)
+  onDisconnectedRef.current = onDisconnected
   const [connected, setConnected] = useState(false)
   const [users, setUsers] = useState<UserPresence[]>([])
   const [comments, setComments] = useState<Comment[]>([])
@@ -102,11 +110,11 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
       url: `${WS_URL}/ws`,
       name: roomId,
       document: doc,
-      parameters: { user: userName, password },
       onConnect: () => setConnected(true),
-      onDisconnect: () => setConnected(false),
-      onSynced: () => setConnected(true),
+      onDisconnect: () => { setConnected(false); onDisconnectedRef.current?.() },
+      onSynced: () => { setConnected(true); setSynced(true) },
     })
+    provider.on('unsyncedChanges', (count: number) => setUnsaved(count > 0))
     providerRef.current = provider
 
     // Set own presence
@@ -160,7 +168,12 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
     // Shared room settings (e.g. citation style) — synced and persisted with the doc
     const ySettings = doc.getMap<unknown>('settings')
     ySettingsRef.current = ySettings
-    const syncSettings = () => setCitationStyleState((ySettings.get('citationStyle') as CitationStyle) ?? 'author-date')
+    const syncSettings = () => {
+      setCitationStyleState((ySettings.get('citationStyle') as CitationStyle) ?? 'author-date')
+      const t = ySettings.get('title')
+      setTitle(typeof t === 'string' ? t : null)
+      setUseLibraryState(ySettings.get('useLibrary') !== false)
+    }
     syncSettings()
     ySettings.observe(syncSettings)
 
@@ -323,7 +336,7 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
       docRef.current = null
       providerRef.current = null
     }
-  }, [roomId, userName, userColor, password])
+  }, [roomId, userName, userColor])
 
   /** Call this from the Monaco onMount handler to bind the editor. */
   const bindEditor = useCallback((ed: MonacoEditor.IStandaloneCodeEditor) => {
@@ -418,8 +431,18 @@ export function useCollab(roomId: string, userName: string, userColor: string, p
     ySettingsRef.current?.set('citationStyle', style)
   }, [])
 
+  /** Whether citations are resolved against the collaborators' reference libraries (shared document setting). */
+  const setUseLibrary = useCallback((on: boolean) => {
+    ySettingsRef.current?.set('useLibrary', on)
+  }, [])
+
   return {
+    useLibrary,
+    setUseLibrary,
     connected,
+    synced,
+    unsaved,
+    title,
     users,
     comments,
     changes,

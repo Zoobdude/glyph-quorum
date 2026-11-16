@@ -37,7 +37,7 @@ export function ChangesList({ changes, trackChanges, onAccept, onReject, onNavig
       {pending.map(change => <ChangeRow key={change.id} change={change} onAccept={onAccept} onReject={onReject} onNavigate={onNavigate} />)}
 
       {pending.length > 0 && rest.length > 0 && (
-        <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '4px 0 8px' }} />
+        <div style={{ height: 1, background: 'var(--line)', margin: '4px 0 8px' }} />
       )}
 
       {rest.map(change => <ChangeRow key={change.id} change={change} onAccept={onAccept} onReject={onReject} onNavigate={onNavigate} />)}
@@ -64,8 +64,8 @@ function ChangeRow({ change, onAccept, onReject, onNavigate }: {
         padding: '9px 10px',
         marginBottom: 6,
         borderRadius: 'var(--radius-sm)',
-        background: pending ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.03)',
-        border: '1px solid rgba(0,0,0,0.06)',
+        background: pending ? 'var(--surface)' : 'var(--hover)',
+        border: '1px solid var(--line)',
         borderLeft: `3px solid ${change.authorColor}`,
         opacity: pending ? 1 : 0.6,
         animation: 'fadeIn .12s ease',

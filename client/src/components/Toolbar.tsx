@@ -1,340 +1,171 @@
-import React, { useState, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { UserPresence } from '../hooks/useCollab'
+import type { DocMeta } from '../lib/api'
+import { Link } from 'react-router-dom'
+import { LOGO_URL } from '../lib/brand'
+import { AccountMenu } from '../auth'
+import { Avatar, Icon, MenuButton, MenuItem } from './ui'
+
+export type ViewMode = 'split' | 'editor' | 'preview'
 
 interface Props {
-  roomId: string
-  roomPassword: string
+  doc: DocMeta
+  title: string
+  onRename: (title: string) => void
+  onToggleStar: () => void
   connected: boolean
+  synced: boolean
+  unsaved: boolean
   isCompiling: boolean
   hasError: boolean
   users: UserPresence[]
-  ownName: string
-  ownColor: string
-  pdfBytes: Uint8Array | null
-  getSource: () => string
-  onLoadContent: (text: string) => void
-  onUploadAssets: (files: FileList) => void
-  onLeave: () => void
-  onDelete: () => void
-  viewMode: 'split' | 'editor' | 'preview'
-  onViewMode: (m: 'split' | 'editor' | 'preview') => void
+  hasPdf: boolean
+  onImport: (files: FileList) => void
+  onDownloadTyp: () => void
+  onDownloadPdf: () => void
+  onShare: () => void
+  onHistory: () => void
+  onCopy: () => void
+  onTrash: () => void
+  onCite: () => void
+  viewMode: ViewMode
+  onViewMode: (m: ViewMode) => void
   trackChanges: boolean
   onToggleTrackChanges: (on: boolean) => void
   spellCheckEnabled: boolean
   onToggleSpellCheck: (on: boolean) => void
 }
 
-export function Toolbar({ roomId, roomPassword, connected, isCompiling, hasError, users, ownName, ownColor, pdfBytes, getSource, onLoadContent, onUploadAssets, onLeave, onDelete, viewMode, onViewMode, trackChanges, onToggleTrackChanges, spellCheckEnabled, onToggleSpellCheck }: Props) {
-  const [copied, setCopied] = useState(false)
+export function Toolbar(p: Props) {
+  const { doc } = p
+  const canEdit = doc.role !== 'viewer'
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [draft, setDraft] = useState(p.title)
+  const editing = useRef(false)
+  useEffect(() => { if (!editing.current) setDraft(p.title) }, [p.title])
 
-  const openFile = () => fileInputRef.current?.click()
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
-    const typFiles  = Array.from(files).filter(f => f.name.endsWith('.typ') || f.name.endsWith('.txt'))
-    const imgFiles  = Array.from(files).filter(f => !f.name.endsWith('.typ') && !f.name.endsWith('.txt'))
-
-    // Load the first .typ file into the editor
-    if (typFiles.length > 0) {
-      const reader = new FileReader()
-      reader.onload = ev => {
-        if (typeof ev.target?.result === 'string') onLoadContent(ev.target.result)
-      }
-      reader.readAsText(typFiles[0])
-    }
-
-    // Upload any image/asset files
-    if (imgFiles.length > 0) {
-      const dt = new DataTransfer()
-      imgFiles.forEach(f => dt.items.add(f))
-      onUploadAssets(dt.files)
-    }
-
-    e.target.value = ''
-  }
-
-  const copyLink = () => {
-    const url  = `${window.location.origin}/${roomId}`
-    const text = roomPassword ? `${url}\nPassword: ${roomPassword}` : url
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    })
-  }
-
-  const downloadPdf = () => {
-    if (!pdfBytes) return
-    const blob = new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${roomId}.pdf`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const downloadTyp = () => {
-    const blob = new Blob([getSource()], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${roomId}.typ`
-    a.click()
-    URL.revokeObjectURL(url)
+  const commitTitle = () => {
+    editing.current = false
+    const next = draft.trim()
+    if (next && next !== p.title) p.onRename(next)
+    else setDraft(p.title)
   }
 
   return (
-    <div style={{
-      height: 'var(--toolbar-h)',
-      display: 'flex',
-      alignItems: 'center',
-      padding: '0 16px',
-      flexShrink: 0,
-      background: 'rgba(255,255,255,0.60)',
-      backdropFilter: 'blur(24px) saturate(180%)',
-      WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-      borderBottom: '1px solid rgba(255,255,255,0.65)',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 0 rgba(0,0,0,0.04)',
-    }}>
-      {/* ── Left: session identity ────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
-        <img src="/favicon.png" alt="" style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0 }} />
-        <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', userSelect: 'none', whiteSpace: 'nowrap' }}>
-          Glyph <span style={{ color: 'var(--accent)' }}>Quorum</span>
-        </span>
-        <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.1)' }} />
-        <span style={{ fontSize: 12, color: 'var(--overlay)' }}>
-          #{roomId}{roomPassword && <span title="Password protected" style={{ marginLeft: 5, fontSize: 10, color: 'var(--subtext)', verticalAlign: 'middle' }}>[ locked ]</span>}
-        </span>
-        <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.1)' }} />
-        {/* Avatar + Leave grouped together */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Avatar color={ownColor} title={ownName} />
-          <ToolBtn onClick={onLeave} title="Leave this room">Leave</ToolBtn>
-          <ToolBtn onClick={onDelete} danger title="Permanently delete this room and all its content">Delete</ToolBtn>
-        </div>
+    <header className="ed-top">
+      <Link to="/" className="brand" title="All documents" aria-label="Back to all documents"><img src={LOGO_URL} alt="" /></Link>
+
+      <div className="ed-left">
+        <input
+          className="ed-title"
+          aria-label="Document title"
+          value={draft}
+          readOnly={!canEdit}
+          maxLength={120}
+          size={Math.max(6, Math.min(36, Math.round(draft.length * 0.85)))}
+          onFocus={() => { editing.current = true }}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commitTitle}
+          onKeyDown={e => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') { setDraft(p.title); editing.current = false; requestAnimationFrame(() => (e.target as HTMLInputElement).blur()) }
+          }}
+        />
+        <button className={`icon-btn${doc.starred ? ' on' : ''}`} onClick={p.onToggleStar} aria-pressed={doc.starred}
+          title={doc.starred ? 'Remove star' : 'Add star'} aria-label={doc.starred ? 'Remove star' : 'Add star'}>
+          <Icon name="star" fill={doc.starred} />
+        </button>
+
+        <MenuButton className="btn btn-ghost" title="File" menu={<>
+          {canEdit && <MenuItem icon="upload" onClick={() => fileInputRef.current?.click()}>Import .typ or upload images…</MenuItem>}
+          <MenuItem icon="download" onClick={p.onDownloadTyp}>Download source (.typ)</MenuItem>
+          <MenuItem icon="download" onClick={p.onDownloadPdf} disabled={!p.hasPdf}>Download PDF</MenuItem>
+          <div className="menu-sep" />
+          <MenuItem icon="history" onClick={p.onHistory}>Version history</MenuItem>
+          <MenuItem icon="copy" onClick={p.onCopy}>Make a copy</MenuItem>
+          {doc.role === 'owner' && <>
+            <div className="menu-sep" />
+            <MenuItem icon="trash" danger onClick={p.onTrash}>Move to trash</MenuItem>
+          </>}
+        </>}>
+          File<Icon name="chevron" size={14} />
+        </MenuButton>
+
+        {canEdit && (
+          <MenuButton className="btn btn-ghost" title="Tools" menu={<>
+            <MenuItem icon="quote" onClick={p.onCite}>Insert citation…</MenuItem>
+            <div className="menu-sep" />
+            <MenuItem icon="edit" checked={p.trackChanges} onClick={() => p.onToggleTrackChanges(!p.trackChanges)}>Track changes (suggest edits)</MenuItem>
+            <MenuItem icon="book" checked={p.spellCheckEnabled} onClick={() => p.onToggleSpellCheck(!p.spellCheckEnabled)}>Spell check</MenuItem>
+          </>}>
+            Tools<Icon name="chevron" size={14} />
+          </MenuButton>
+        )}
+
+        <SaveStatus canEdit={canEdit} connected={p.connected} synced={p.synced} unsaved={p.unsaved} />
       </div>
 
-      {/* ── Centre: view mode ─────────────────────────── */}
-      <div style={{ display: 'flex', border: '1px solid rgba(255,255,255,0.8)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+      <div className="seg" role="group" aria-label="Layout">
         {(['editor', 'split', 'preview'] as const).map(m => (
-          <button
-            key={m}
-            onClick={() => onViewMode(m)}
-            title={{ editor: 'Source only', split: 'Split view', preview: 'Preview only' }[m]}
-            style={{
-              padding: '4px 12px',
-              fontSize: 11,
-              fontFamily: 'inherit',
-              border: 'none',
-              borderRight: m !== 'preview' ? '1px solid rgba(0,0,0,0.08)' : 'none',
-              background: viewMode === m ? 'rgba(37,99,235,0.15)' : 'rgba(255,255,255,0.55)',
-              color: viewMode === m ? 'var(--accent)' : 'var(--subtext)',
-              fontWeight: viewMode === m ? 600 : 400,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'background .1s, color .1s',
-            }}
-          >
+          <button key={m} className={p.viewMode === m ? 'active' : ''} aria-pressed={p.viewMode === m} onClick={() => p.onViewMode(m)}>
             {{ editor: 'Source', split: 'Split', preview: 'Preview' }[m]}
           </button>
         ))}
       </div>
 
-      {/* ── Right: file actions + collaboration ──────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'flex-end' }}>
-        {/* Track Changes / Spell Check toggles */}
-        <ToggleSwitch
-          label="Track Changes"
-          on={trackChanges}
-          onChange={onToggleTrackChanges}
-          activeColor="var(--green)"
-          title={trackChanges ? 'Track Changes is on — edits are shown as suggestions to accept or reject' : 'Turn on Track Changes to mark edits as suggestions'}
-        />
-        <ToggleSwitch
-          label="Spell Check"
-          on={spellCheckEnabled}
-          onChange={onToggleSpellCheck}
-          activeColor="var(--accent)"
-          title={spellCheckEnabled ? 'Spell Check is on — misspelled words are underlined' : 'Turn on Spell Check to underline misspelled words'}
-        />
+      <div className="ed-right">
+        {p.trackChanges && canEdit && (
+          <button className="pill hide-medium" style={{ background: 'var(--green-soft)', color: 'var(--green)', border: 'none' }}
+            title="Edits are recorded as suggestions. Click to turn off." onClick={() => p.onToggleTrackChanges(false)}>
+            <span className="dot" />Suggesting
+          </button>
+        )}
+        <CompileStatus isCompiling={p.isCompiling} hasError={p.hasError} />
 
-        <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.1)' }} />
-
-        {/* File actions */}
-        <ToolBtn onClick={openFile} title="Open a .typ file or upload images">Open</ToolBtn>
-        <ToolBtn onClick={downloadTyp} title="Download source (.typ)">.typ</ToolBtn>
-        <ToolBtn onClick={downloadPdf} disabled={!pdfBytes} title="Download PDF">PDF</ToolBtn>
-
-        <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.1)' }} />
-
-        {/* Other users' presence avatars */}
-        {users.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 4 }}>
-            {users.slice(0, 5).map(u => (
-              <Avatar key={u.clientId} color={u.color} title={u.name} />
-            ))}
-            {users.length > 5 && (
-              <span style={{ fontSize: 11, color: 'var(--overlay)', marginLeft: 6 }}>+{users.length - 5}</span>
-            )}
+        {p.users.length > 0 && (
+          <div className="avatar-stack" aria-label={`${p.users.length} other ${p.users.length === 1 ? 'person' : 'people'} here`}>
+            {p.users.slice(0, 4).map(u => <Avatar key={u.clientId} name={u.name} color={u.color} />)}
+            {p.users.length > 4 && <span className="avatar" style={{ background: '#64748b' }}>+{p.users.length - 4}</span>}
           </div>
         )}
 
-        {/* Status */}
-        <StatusPill connected={connected} isCompiling={isCompiling} hasError={hasError} />
-
-        <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.1)' }} />
-
-        {/* Share */}
-        <ToolBtn onClick={copyLink} primary title={roomPassword ? 'Copy link + password' : 'Copy room link'}>{copied ? 'Copied!' : 'Share'}</ToolBtn>
+        <button className="btn btn-primary" onClick={p.onShare}>
+          <Icon name={doc.linkAccess === 'none' ? 'lock' : 'globe'} size={15} /><span className="hide-narrow">Share</span>
+        </button>
+        <AccountMenu />
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".typ,.txt,image/*,.svg,.pdf"
-        multiple
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-    </div>
+      <input ref={fileInputRef} type="file" accept=".typ,.txt,image/*,.svg,.pdf,.bib" multiple hidden
+        onChange={e => { if (e.target.files?.length) p.onImport(e.target.files); e.target.value = '' }} />
+    </header>
   )
 }
 
-function ToggleSwitch({ label, on, onChange, activeColor, title }: {
-  label: string
-  on: boolean
-  onChange: (on: boolean) => void
-  activeColor: string
-  title?: string
-}) {
+function SaveStatus({ canEdit, connected, synced, unsaved }: { canEdit: boolean; connected: boolean; synced: boolean; unsaved: boolean }) {
+  let icon: 'cloud' | 'cloudOff' | 'eye' = 'cloud'
+  let label = 'Saved'
+  let title = 'Every change is saved automatically'
+  if (!connected) {
+    icon = 'cloudOff'
+    label = synced ? 'Offline' : 'Connecting…'
+    title = synced ? 'Connection lost — your edits are kept and will sync when you are back online' : 'Connecting to the server'
+  } else if (!canEdit) { icon = 'eye'; label = 'View only'; title = 'You can read this document but not change it' }
+  else if (unsaved) label = 'Saving…'
   return (
-    <button
-      onClick={() => onChange(!on)}
-      title={title}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        fontSize: 12, fontWeight: on ? 600 : 400,
-        padding: '4px 11px',
-        borderRadius: 'var(--radius-sm)',
-        border: `1px solid ${on ? `color-mix(in srgb, ${activeColor} 40%, transparent)` : 'rgba(255,255,255,0.8)'}`,
-        background: on ? `color-mix(in srgb, ${activeColor} 14%, transparent)` : 'rgba(255,255,255,0.55)',
-        color: on ? activeColor : 'var(--text)',
-        cursor: 'pointer',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)',
-        transition: 'background .12s, border-color .12s',
-        letterSpacing: '-0.01em',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <span style={{
-        width: 26, height: 14, borderRadius: 8, flexShrink: 0,
-        background: on ? activeColor : 'rgba(0,0,0,0.15)',
-        position: 'relative',
-        transition: 'background .12s',
-      }}>
-        <span style={{
-          position: 'absolute', top: 2, left: on ? 13 : 2,
-          width: 10, height: 10, borderRadius: '50%',
-          background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
-          transition: 'left .12s',
-        }} />
-      </span>
-      {label}
-    </button>
+    <span className="ed-status hide-medium" title={title} style={!connected && synced ? { color: 'var(--yellow)' } : undefined} role="status">
+      <Icon name={icon} size={16} />{label}
+    </span>
   )
 }
 
-function Avatar({ color, title }: { color: string; title: string }) {
-  return (
-    <div
-      title={title}
-      style={{
-        width: 24, height: 24, borderRadius: '50%',
-        background: color,
-        border: '2px solid rgba(255,255,255,0.9)',
-        marginLeft: -6,
-        boxShadow: '0 0 0 1px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.1)',
-        flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 9, fontWeight: 700, color: '#fff',
-      }}
-    >
-      {title[0]?.toUpperCase()}
-    </div>
-  )
-}
-
-function StatusPill({ connected, isCompiling, hasError }: { connected: boolean; isCompiling: boolean; hasError: boolean }) {
-  let bg = 'rgba(22,163,74,0.12)'
-  let textColor = 'var(--green)'
-  let label = 'Live'
-
-  if (isCompiling) {
-    bg = 'rgba(217,119,6,0.12)'; textColor = 'var(--yellow)'; label = 'Compiling'
-  } else if (hasError) {
-    bg = 'rgba(220,38,38,0.12)'; textColor = 'var(--red)'; label = 'Error'
-  } else if (!connected) {
-    bg = 'rgba(0,0,0,0.06)'; textColor = 'var(--overlay)'; label = 'Offline'
+function CompileStatus({ isCompiling, hasError }: { isCompiling: boolean; hasError: boolean }) {
+  if (hasError && !isCompiling) {
+    return <span className="pill" style={{ background: 'var(--danger-bg)', color: 'var(--red)' }} title="The document has errors — see the preview panel"><span className="dot" />Error</span>
   }
-
+  // Keep the slot occupied so the toolbar does not shift every time a compile starts.
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 5,
-      background: bg, borderRadius: 20, padding: '3px 10px',
-      border: `1px solid ${textColor}30`,
-      backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-    }}>
-      <div style={{ width: 6, height: 6, borderRadius: '50%', background: textColor }} />
-      <span style={{ fontSize: 11, color: textColor, fontWeight: 500 }}>{label}</span>
-    </div>
-  )
-}
-
-function ToolBtn({ onClick, disabled, title, primary, danger, children }: {
-  onClick: () => void
-  disabled?: boolean
-  title?: string
-  primary?: boolean
-  danger?: boolean
-  children: React.ReactNode
-}) {
-  const [hovered, setHovered] = React.useState(false)
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        fontSize: 12,
-        fontWeight: primary ? 600 : 400,
-        padding: '4px 11px',
-        borderRadius: 'var(--radius-sm)',
-        border: primary || danger ? 'none' : `1px solid ${disabled ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.8)'}`,
-        background: disabled
-          ? 'rgba(255,255,255,0.25)'
-          : danger
-            ? hovered ? 'rgba(220,38,38,0.85)' : 'rgba(220,38,38,0.7)'
-            : primary
-              ? hovered ? 'rgba(37,99,235,0.85)' : 'var(--accent)'
-              : hovered ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.55)',
-        color: disabled ? 'var(--overlay)' : (primary || danger) ? '#fff' : 'var(--text)',
-        cursor: disabled ? 'default' : 'pointer',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        boxShadow: disabled ? 'none' : '0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)',
-        transition: 'background .12s',
-        letterSpacing: '-0.01em',
-      }}
-    >
-      {children}
-    </button>
+    <span className="pill hide-medium" style={{ color: 'var(--overlay)', visibility: isCompiling ? 'visible' : 'hidden' }} aria-hidden={!isCompiling}>
+      <span className="spinner" style={{ width: 12, height: 12 }} />Compiling
+    </span>
   )
 }

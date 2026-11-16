@@ -34,12 +34,21 @@ RUN npm ci --omit=dev --workspace server
 
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/client/dist ./client/dist
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app/server
-RUN mkdir -p data
+RUN mkdir -p data && chown -R node:node data
 
 ENV NODE_ENV=production
 ENV PORT=3000
+# HOME is where Typst caches downloaded @preview packages.
+ENV HOME=/home/node
 EXPOSE 3000
+VOLUME /app/server/data
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
+
+# The entrypoint fixes volume ownership, then runs the server as the unprivileged "node" user.
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]

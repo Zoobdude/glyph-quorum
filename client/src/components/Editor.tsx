@@ -5,6 +5,7 @@ import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import { registerTypstLanguage, TYPST_LANGUAGE_ID } from '../lib/typstLanguage'
 import { buildMonacoTheme } from '../lib/tokenColors'
+import { useTheme } from '../lib/theme'
 import { filterCommands, type SlashCommand } from '../lib/slashCommands'
 import { SlashCommandPalette } from './SlashCommandPalette'
 import type { Comment, Change } from '../hooks/useCollab'
@@ -16,7 +17,10 @@ loader.config({ monaco })
 
 registerTypstLanguage(monaco)
 monaco.editor.defineTheme('quorum-typst', buildMonacoTheme({}))
+monaco.editor.defineTheme('quorum-typst-dark', buildMonacoTheme({}, true))
 registerSpellCodeActions()
+// Monaco measures glyph widths once; re-measure when the bundled editor font finishes loading.
+document.fonts?.ready.then(() => monaco.editor.remeasureFonts())
 
 const SPELL_CHECK_DEBOUNCE_MS = 500
 
@@ -37,10 +41,14 @@ interface Props {
   spellCheckEnabled: boolean
   dictionary: string[]
   onAddToDictionary: (word: string) => void
+  readOnly?: boolean
 }
 
-export function Editor({ onMount: onMountProp, onContentChange, fontSize, comments, changes, spellCheckEnabled, dictionary, onAddToDictionary }: Props) {
+export function Editor({ onMount: onMountProp, onContentChange, fontSize, comments, changes, spellCheckEnabled, dictionary, onAddToDictionary, readOnly = false }: Props) {
   const editorRef      = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const themeName      = useTheme().theme === 'dark' ? 'quorum-typst-dark' : 'quorum-typst'
+  const themeNameRef   = useRef(themeName)
+  themeNameRef.current = themeName
   const containerRef   = useRef<HTMLDivElement>(null)
   const slashPosRef    = useRef<{ lineNumber: number; column: number } | null>(null)
   const decorationsRef = useRef<string[]>([])
@@ -167,7 +175,7 @@ export function Editor({ onMount: onMountProp, onContentChange, fontSize, commen
 
   const handleMount: OnMount = useCallback((ed) => {
     editorRef.current = ed
-    monaco.editor.setTheme('quorum-typst')
+    monaco.editor.setTheme(themeNameRef.current)
     ed.addCommand(monaco.KeyCode.F1, () => {})
     onMountProp(ed)
 
@@ -338,12 +346,14 @@ export function Editor({ onMount: onMountProp, onContentChange, fontSize, commen
       <MonacoEditor
         height="100%"
         language={TYPST_LANGUAGE_ID}
-        theme="quorum-typst"
+        theme={themeName}
         defaultValue=""
         onMount={handleMount}
         options={{
           fontSize,
-          fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
+          readOnly,
+          readOnlyMessage: { value: 'You have view-only access to this document' },
+          fontFamily: "'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
           fontLigatures: true,
           lineHeight: 22,
           minimap: { enabled: false },
@@ -366,7 +376,7 @@ export function Editor({ onMount: onMountProp, onContentChange, fontSize, commen
           wordBasedSuggestions: 'off',
           parameterHints: { enabled: false },
           contextmenu: false,
-          scrollbar: { verticalScrollbarSize: 7, horizontalScrollbarSize: 7 },
+          scrollbar: { verticalScrollbarSize: 9, horizontalScrollbarSize: 9 },
         }}
       />
       <SlashCommandPalette {...palette} onSelect={doInsert} onClose={closePalette} />

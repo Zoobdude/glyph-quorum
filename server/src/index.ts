@@ -1,134 +1,87 @@
-import express from 'express'
-import cors from 'cors'
+import express, { type ErrorRequestHandler } from 'express'
 import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
-import { hocuspocus } from './hocuspocus.js'
-import { compileTypst, getAssetsDir } from './compiler.js'
-import { listDocs, isRoomProtected, setRoomPassword, checkRoomPassword, deleteRoom } from './storage.js'
 import { join } from 'path'
-import { existsSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'fs'
+import { existsSync } from 'fs'
+import { hocuspocus } from './hocuspocus.js'
+import { api } from './routes/index.js'
+import { userFromRequest, trackSocket } from './auth.js'
+import { announceSetup } from './settings.js'
+import { securityHeaders, requireSameOrigin, isSameOrigin, HttpError, allow } from './security.js'
+import { db } from './db.js'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const CLIENT_DIST = join(__dirname, '..', '..', 'client', 'dist')
 
 // ── Express ────────────────────────────────────────────────────────────────
 const app = express()
-app.use(cors())
-app.use(express.json({ limit: '25mb' }))
+app.disable('x-powered-by')
+// Trust X-Forwarded-* only from local/private proxies (reverse proxy, tunnel, dev server) by default.
+app.set('trust proxy', process.env.TRUST_PROXY ?? 'loopback, linklocal, uniquelocal')
+app.use(securityHeaders)
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }))
+app.use('/api', requireSameOrigin, express.json({ limit: '3mb' }), api)
 
-app.get('/api/docs', (_req, res) => {
-  const docs = listDocs().map(name => ({ name, protected: isRoomProtected(name) }))
-  res.json({ docs })
-})
-
-// ── Room auth ─────────────────────────────────────────────────────────────────
-
-app.get('/api/rooms/:docId/auth', (req, res) => {
-  res.json({ protected: isRoomProtected(req.params.docId) })
-})
-
-app.post('/api/rooms/:docId/auth', (req, res) => {
-  const { password = '', action = 'validate' } = req.body as { password?: string; action?: string }
-  const docId = req.params.docId
-
-  if (action === 'set') {
-    if (isRoomProtected(docId)) return res.status(409).json({ ok: false, error: 'Room already has a password' })
-    if (!password.trim()) return res.status(400).json({ ok: false, error: 'Password cannot be empty' })
-    setRoomPassword(docId, password)
-    return res.json({ ok: true })
-  }
-
-  const ok = checkRoomPassword(docId, password)
-  res.json({ ok, error: ok ? undefined : 'Incorrect password' })
-})
-
-app.delete('/api/rooms/:docId', (req, res) => {
-  const { password = '' } = req.body as { password?: string }
-  const docId = req.params.docId
-  if (!checkRoomPassword(docId, password)) {
-    return res.status(403).json({ ok: false, error: 'Incorrect password' })
-  }
-  deleteRoom(docId)
-  res.json({ ok: true })
-})
-
-// ── Assets ────────────────────────────────────────────────────────────────
-
-const ASSET_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.pdf', '.webp', '.bib'])
-const RESERVED   = new Set(['_compile.typ', '_compile.pdf'])
-
-app.get('/api/rooms/:docId/assets', (req, res) => {
-  const dir = getAssetsDir(req.params.docId)
-  const files = readdirSync(dir)
-    .filter(f => {
-      const ext = f.slice(f.lastIndexOf('.')).toLowerCase()
-      return ASSET_EXTS.has(ext) && !RESERVED.has(f)
-    })
-    .map(f => ({ name: f, size: statSync(join(dir, f)).size }))
-  res.json({ files })
-})
-
-app.post('/api/rooms/:docId/assets', (req, res) => {
-  const { filename, data } = req.body as { filename?: string; data?: string }
-  if (!filename || !data) return res.status(400).json({ ok: false, error: 'filename and data required' })
-  const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase()
-  if (!ASSET_EXTS.has(ext)) return res.status(400).json({ ok: false, error: 'unsupported file type' })
-  // Sanitise: strip path separators
-  const safe = filename.replace(/[/\\]/g, '_')
-  const dir  = getAssetsDir(req.params.docId)
-  writeFileSync(join(dir, safe), Buffer.from(data, 'base64'))
-  res.json({ ok: true, name: safe })
-})
-
-app.delete('/api/rooms/:docId/assets/:filename', (req, res) => {
-  const dir  = getAssetsDir(req.params.docId)
-  const file = req.params.filename.replace(/[/\\]/g, '_')
-  const path = join(dir, file)
-  if (existsSync(path)) unlinkSync(path)
-  res.json({ ok: true })
-})
-
-// ── Compile ───────────────────────────────────────────────────────────────
-
-app.post('/api/compile', async (req, res) => {
-  const { content, docId, citationStyle } = req.body as { content?: string; docId?: string; citationStyle?: 'numbered' | 'author-date' }
-  if (typeof content !== 'string') {
-    return res.status(400).json({ ok: false, error: 'content required' })
-  }
-  const result = await compileTypst(content, docId ?? 'untitled', citationStyle ?? 'author-date')
-  res.json(result)
-})
-
-// ── Serve built client (MUST be after all API routes) ─────────────────────
+// ── Serve built client ─────────────────────────────────────────────────────
 if (existsSync(CLIENT_DIST)) {
-  app.use(express.static(CLIENT_DIST))
-  app.get('*', (_req, res) => res.sendFile(join(CLIENT_DIST, 'index.html')))
+  // Vite emits content-hashed filenames under /assets, so those can be cached forever.
+  app.use('/assets', express.static(join(CLIENT_DIST, 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }))
+  app.use(express.static(CLIENT_DIST, { index: false, maxAge: '1h' }))
+  app.get('*', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache')
+    res.sendFile(join(CLIENT_DIST, 'index.html'))
+  })
 }
+
+const onError: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (res.headersSent) { res.end(); return }
+  if (err instanceof HttpError) { res.status(err.status).json({ error: err.message }); return }
+  const status = typeof err?.status === 'number' && err.status >= 400 && err.status < 500 ? err.status : 500
+  if (status === 500) console.error('[quorum] request failed:', err)
+  const message = status === 413 ? 'That upload is too large' : status === 500 ? 'Something went wrong' : 'Bad request'
+  res.status(status).json({ error: message })
+}
+app.use(onError)
 
 // ── HTTP + WebSocket server ────────────────────────────────────────────────
 const httpServer = createServer(app)
 
 // WebSocket server for Hocuspocus (Y.js collaboration)
-const wss = new WebSocketServer({ noServer: true })
-
-wss.on('connection', (ws, req) => {
-  hocuspocus.handleConnection(ws as any, req)
-})
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 })
 
 httpServer.on('upgrade', (request, socket, head) => {
-  if (request.url?.startsWith('/ws')) {
-    wss.handleUpgrade(request, socket as any, head, (ws) => {
-      wss.emit('connection', ws, request)
-    })
-  } else {
-    socket.destroy()
-  }
+  const reject = (status: string) => { socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`) }
+
+  if (!request.url?.startsWith('/ws')) { reject('404 Not Found'); return }
+  // Browsers do not apply the same-origin policy to WebSockets, so check Origin ourselves.
+  if (!isSameOrigin(request)) { reject('403 Forbidden'); return }
+  const user = userFromRequest(request)
+  if (!user) { reject('401 Unauthorized'); return }
+  if (!allow(`ws:${user.id}`, 120, 60_000)) { reject('429 Too Many Requests'); return }
+
+  wss.handleUpgrade(request, socket as any, head, ws => {
+    // Per-document permissions are checked in hocuspocus.onConnect using this context.
+    trackSocket(user.id, ws) // lets an admin cut this connection if the account is disabled
+    hocuspocus.handleConnection(ws as any, request, { user })
+  })
 })
 
 httpServer.listen(PORT, () => {
-  console.log(`\n  Glyph Quorum server running`)
+  console.log(`\n  Ligature server running`)
   console.log(`  ➜  HTTP  http://localhost:${PORT}`)
   console.log(`  ➜  WS    ws://localhost:${PORT}/ws\n`)
+  announceSetup()
 })
+
+// Flush open documents to disk before exiting.
+let stopping = false
+async function shutdown() {
+  if (stopping) return
+  stopping = true
+  httpServer.close()
+  try { await hocuspocus.destroy() } catch {}
+  db.close()
+  process.exit(0)
+}
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)

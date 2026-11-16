@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ligature">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#g)"/>
+  <!-- An "fi" ligature: the f's crossbar runs on to become the i, and its hook ends as the i's dot. -->
+  <g fill="none" stroke="#fff" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M25 50V24.500c0-6.500 4-10.500 10.500-10.500"/>
+    <path d="M16 29h26v21"/>
+  </g>
+  <circle cx="43.500" cy="15.500" r="4.200" fill="#fff"/>
+</svg>

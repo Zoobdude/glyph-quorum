@@ -16,9 +16,9 @@ export function CommentThread({ comment, onResolve, onNavigate }: Props) {
       style={{
         padding: '10px 12px',
         borderRadius: 'var(--radius-sm)',
-        background: comment.resolved ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.65)',
-        border: '1px solid rgba(0,0,0,0.06)',
-        borderLeft: `3px solid ${comment.resolved ? 'rgba(0,0,0,0.12)' : comment.authorColor}`,
+        background: comment.resolved ? 'var(--hover)' : 'var(--surface)',
+        border: '1px solid var(--line)',
+        borderLeft: `3px solid ${comment.resolved ? 'var(--line-strong)' : comment.authorColor}`,
         opacity: comment.resolved ? 0.6 : 1,
         animation: 'fadeIn .15s ease',
         cursor: onNavigate ? 'pointer' : 'default',

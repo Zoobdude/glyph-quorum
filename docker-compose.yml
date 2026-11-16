@@ -8,6 +8,12 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
+      # Code the first-run setup wizard asks for. Leave unset to have a random
+      # one printed in the log (docker compose logs).
+      - SETUP_TOKEN=${SETUP_TOKEN:-}
+    init: true
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - glyph-quorum-data:/app/server/data
     restart: unless-stopped

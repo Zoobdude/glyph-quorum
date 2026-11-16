@@ -1,57 +1,54 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { apiBytes, ApiError } from '../lib/api'
 import type { CitationStyle } from './useCollab'
 
-const DEBOUNCE_MS = 1500
+const DEBOUNCE_MS = 350
 
-export function useCompiler(content: string, docId: string, citationStyle: CitationStyle = 'author-date') {
+/**
+ * Compiles the document to PDF as it changes.
+ * At most one request is in flight; edits made meanwhile are coalesced into a
+ * single follow-up compile, so the preview is never more than one compile behind.
+ */
+export function useCompiler(content: string, docId: string, citationStyle: CitationStyle = 'author-date', useLibrary = true, enabled = true) {
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isCompiling, setIsCompiling] = useState(false)
-  const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const abortRef  = useRef<AbortController | null>(null)
-  const contentRef = useRef(content)
-  const docIdRef   = useRef(docId)
-  const citationStyleRef = useRef(citationStyle)
-  contentRef.current = content
-  docIdRef.current   = docId
-  citationStyleRef.current = citationStyle
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latest = useRef({ content, citationStyle, useLibrary })
+  latest.current = { content, citationStyle, useLibrary }
+  const running = useRef(false)
+  const dirty = useRef(false)
+  const alive = useRef(true)
 
   const compile = useCallback(async () => {
-    abortRef.current?.abort()
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
+    if (running.current) { dirty.current = true; return }
+    running.current = true
     setIsCompiling(true)
-    try {
-      const res = await fetch('/api/compile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: contentRef.current, docId: docIdRef.current, citationStyle: citationStyleRef.current }),
-        signal: ctrl.signal,
-      })
-      if (ctrl.signal.aborted) return
-      const data = await res.json()
-      if (data.ok) {
-        const bytes = Uint8Array.from(atob(data.pdfBase64), c => c.charCodeAt(0))
+    do {
+      dirty.current = false
+      try {
+        const bytes = await apiBytes(`/docs/${docId}/compile`, { body: latest.current })
+        if (!alive.current) return
         setPdfBytes(bytes)
         setError(null)
-      } else {
-        setError(data.error ?? 'Compilation failed')
+      } catch (e) {
+        if (!alive.current) return
+        setError((e as ApiError).status === 422 ? (e as Error).message : `Could not compile: ${(e as Error).message}`)
+        if ((e as ApiError).status !== 422) break // server/network trouble: wait for the next edit instead of hammering
       }
-    } catch (e) {
-      if ((e as Error).name !== 'AbortError') {
-        setError(`Server error: ${(e as Error).message}`)
-      }
-    } finally {
-      if (!ctrl.signal.aborted) setIsCompiling(false)
-    }
-  }, [])
+    } while (dirty.current)
+    running.current = false
+    setIsCompiling(false)
+  }, [docId])
+
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
 
   // Debounced compile on content change
   useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current)
+    if (!enabled) return
     timerRef.current = setTimeout(compile, DEBOUNCE_MS)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [content, docId, citationStyle, compile])
+  }, [content, citationStyle, useLibrary, compile, enabled])
 
   // Immediate recompile (e.g. after asset upload)
   const recompile = useCallback(() => {

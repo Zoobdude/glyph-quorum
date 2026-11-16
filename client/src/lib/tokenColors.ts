@@ -156,19 +156,48 @@ const EDITOR_UI_COLORS = {
   'focusBorder': '#00000000',
 }
 
+const DARK_EDITOR_UI_COLORS = {
+  'editor.background': '#181c2500',
+  'editor.foreground': '#e6e9f0',
+  'editorLineNumber.foreground': '#4a5365',
+  'editorLineNumber.activeForeground': '#a3acbd',
+  'editor.lineHighlightBackground': '#ffffff0a',
+  'editor.selectionBackground': '#6b9bff40',
+  'editor.inactiveSelectionBackground': '#6b9bff22',
+  'editorCursor.foreground': '#6b9bff',
+  'editorWhitespace.foreground': '#2a303d',
+  'editorIndentGuide.background1': '#2a303d',
+  'editorIndentGuide.activeBackground1': '#3a4252',
+  'scrollbarSlider.background': '#ffffff18',
+  'scrollbarSlider.hoverBackground': '#ffffff30',
+  'scrollbarSlider.activeBackground': '#ffffff40',
+  'focusBorder': '#00000000',
+}
+
+/** Blend a colour toward white so syntax colours chosen for a light background stay readable on a dark one. */
+function lighten(hex: string, amount: number): string {
+  const n = parseInt(hex.replace('#', ''), 16)
+  const mix = (c: number) => Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0')
+  return `#${mix((n >> 16) & 255)}${mix((n >> 8) & 255)}${mix(n & 255)}`
+}
+
 export function buildMonacoTheme(
-  colors: TokenColors
+  colors: TokenColors,
+  dark = false
 ): Monaco.editor.IStandaloneThemeData {
-  const rules: Monaco.editor.ITokenThemeRule[] = TOKEN_DEFS.map(def => ({
-    token: `${def.token}.typst`,
-    foreground: (colors[def.id] ?? def.defaultColor).replace('#', ''),
-    fontStyle: def.fontStyle
-  }))
+  const rules: Monaco.editor.ITokenThemeRule[] = TOKEN_DEFS.map(def => {
+    const color = colors[def.id] ?? def.defaultColor
+    return {
+      token: `${def.token}.typst`,
+      foreground: (dark ? lighten(color, 0.5) : color).replace('#', ''),
+      fontStyle: def.fontStyle
+    }
+  })
 
   return {
-    base: 'vs',
+    base: dark ? 'vs-dark' : 'vs',
     inherit: true,
     rules,
-    colors: EDITOR_UI_COLORS
+    colors: dark ? DARK_EDITOR_UI_COLORS : EDITOR_UI_COLORS
   }
 }
