@@ -1,0 +1,29 @@
+# Development environment (hot reload). Usage:
+#   docker compose -f docker-compose.dev.yml up -d --build
+#   docker compose -f docker-compose.dev.yml logs -f
+#   docker compose -f docker-compose.dev.yml exec dev bash
+name: glyph-quorum-dev
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: glyph-quorum-dev
+    init: true
+    ports:
+      - "3000:3000" # API + WebSocket (tsx watch)
+      - "5173:5173" # Vite dev server (HMR) - open this one
+    environment:
+      - PORT=3000
+    volumes:
+      - .:/app
+      # Keep container-built dependencies separate from the host's.
+      - node_modules:/app/node_modules
+      - client_node_modules:/app/client/node_modules
+      - server_node_modules:/app/server/node_modules
+
+volumes:
+  node_modules:
+  client_node_modules:
+  server_node_modules:
